@@ -1,50 +1,87 @@
-# Expression Specificity Atlas — static DuckDB-WASM explorer
+# TransTEx-related expression-group datasets (human · mouse · cancer)
 
-A single-page site that lets anyone (no coding) filter gene/protein
-expression-specificity classifications across **human tissue**, **mouse
-tissue**, and **cancer**, then download the filtered set as CSV. All querying
-runs in the visitor's browser via [DuckDB-WASM](https://duckdb.org/docs/api/wasm/overview)
-reading one Parquet file. No server, no backend, free to host.
+A browser tool for looking up **TransTEx** transcript
+expression-group classifications across three resources — **human tissues
+(GTEx)**, a **mouse body map**, and **solid-tumor cancers (TCGA solid tumors)** —
+and downloading any filtered slice as CSV.
 
-## Files
-| file | what it is |
+Available: https://pallavisurana1.github.io/TransTEx_related_datasets/
+
+## What's in it
+
+The data comes from the TransTEx scoring method, which assigns every transcript
+to one expression group per resource based on how many tissues (or cancers) it
+is reliably expressed in.
+
+**Normal tissues (human GTEx, mouse body map)** — five groups:
+
+| Class | Meaning |
 |---|---|
-| `index.html` | the web app (loads DuckDB-WASM from a CDN, queries the parquet) |
-| `atlas.parquet` | the data — one tidy long table, columns below |
-| `make-data.py` | regenerates `atlas.parquet` (pyarrow); swap in your real Excel here |
+| `TSp` | Tissue-Specific — reliably expressed in a single tissue |
+| `TEn` | Tissue-Enhanced — expressed in 2 tissues up to 50% of tissues |
+| `Wide` | Widespread — expressed in more than 50% of tissues |
+| `Low` | Low or less expression — below the specificity threshold, some expression |
+| `Null` | No / minimal expression across all tissues |
 
-Schema (one row = one gene × one context):
-`gene_id, symbol, species, domain, context, specificity_class, value`
+**Solid-tumor cancers (TCGA datasets)** — the same logic applied
+across cancer types, giving `CanSp`, `CanEn`, `CanWide`, `CanLow`, `CanNull`,
+plus the two cross-resource biomarker groups: `CanHigh` (high in cancer, lost in
+normal — oncogenic-like ) and `NorHigh` (high in normal, lost in
+cancer — Tumor suppresor: TSG-like).
 
-## Run locally
-Browsers block `fetch`/WASM on `file://`, so serve the folder over http:
-```bash
-cd this-folder
-python3 -m http.server 8000
-# open http://localhost:8000
-```
+Everything is at **transcript / isoform level**, mapped to genes.
 
-## Deploy free on GitHub Pages
-1. Put `index.html` and `atlas.parquet` in a repo (root, or a `/docs` folder).
-2. Repo **Settings → Pages → Build and deployment → Deploy from a branch**.
-3. Source: your branch, folder `/root` (or `/docs`). Save.
-4. Visit `https://<you>.github.io/<repo>/`.
+## Schema
 
-That's the whole hosting story — $0, no account beyond GitHub.
+One row = one transcript × one context (tissue or cancer type):
 
-## Using your real data
-1. `pip install pandas pyarrow`
-2. In `make-data.py`, replace the dummy block with
-   `df = pd.read_excel("your_atlas.xlsx", sheet_name="long")` — keep the same
-   seven column names.
-3. `python make-data.py` → overwrites `atlas.parquet`. Commit and push.
+`transcript_id, gene_id, symbol, species, domain, context, class, value`
 
-If your file grows past ~30–50 MB, don't commit it into the repo. Attach it as
-a **GitHub Release asset** and change the `PARQUET` constant near the top of the
-`<script>` in `index.html` to the release download URL.
+- `domain` — one of `human_tissue`, `mouse_tissue`, `cancer`
+- `context` — the tissue (e.g. `testis`, `liver`) or cancer type (e.g. `GBM`, `OV`)
+- `class` — the expression group (`TSp`/`TEn`/`Wide`/`Low`/`Null` for tissues;
+  `CanSp`/`CanEn`/`CanWide`/`CanLow`/`CanNull` for cancer)
+- `value` — mean expression (TPM/nTPM) for that transcript in that context
 
-## Note on the bundled parquet
-`atlas.parquet` here was produced by a minimal fallback encoder (uncompressed,
-PLAIN) because the machine that built it had no pyarrow and no network. It is
-valid and DuckDB reads it. For anything real, regenerate with `make-data.py`
-so you get compression and the standard toolchain.
+> Adjust these columns to match your actual grouping tables. If you also carry
+> transcript biotype (`protein_coding`, `lncRNA`, …) or the `CanHigh`/`NorHigh`
+> flags, add them as extra columns — the app will pick up any column for
+> display and filtering with a small edit.
+
+## Data Provenance & Citations
+
+If you use this dataset or the associated methodologies, please cite the following publications:
+
+### 🔬 Methods & Frameworks
+
+*   **TransTEx Method (Human Transcriptome)**
+    > Surana P, Dutta P, Davuluri RV. **TransTEx: novel tissue-specificity scoring method for grouping human transcriptome into different expression groups.** *Bioinformatics* 2024;40(8):btae475. 
+    > 🔗 [doi:10.1093/bioinformatics/btae475](https://doi.org/10.1093/bioinformatics/btae475)
+
+*   **TSProm (Mouse Body-Map Groupings)**
+    > Surana P, Dutta P, Papineni N, Sathian R, Zhou Z, Liu H, Davuluri RV. **TSProm: deep learning framework to predict tissue-specific regulatory logic.** *NAR Genomics and Bioinformatics* 2026;8(2):lqag050. 
+    > 🔗 [doi:10.1093/nargab/lqag050](https://doi.org/10.1093/nargab/lqag050)
+
+*   **STPCaT (Solid Tumors Pan-Cancer Transcriptome)**
+    > Surana P, Obusan M, Davuluri RV. **Solid Tumors Pan-Cancer Transcriptome: Tissue/Cancer specific expression groups at the isoform level.** *bioRxiv* 2026. 
+    > 🔗 [doi:10.64898/2026.05.04.722705](https://doi.org/10.64898/2026.05.04.722705) *(CC-BY-NC 4.0)*
+
+---
+
+### 🌐 Software & Databases
+
+*   **TransTEx Database:** [Database Link](https://bmi.cewit.stonybrook.edu/transtexdb/)
+*   **TransTEx R Package:** [GitHub Repository](https://github.com/pallavisurana1/TransTEx)
+
+---
+
+### 📊 Underlying Source Data
+
+The datasets curated here are derived from the following foundational resources:
+
+| Data Type | Source Resource |
+| :--- | :--- |
+| **Human Normal Tissue** | GTEx Consortium (Version 8) |
+| **Cancer Tissue** | TCGA Solid Tumors (via UCSC Xena) |
+| **Mouse Tissue** | Mouse Body Map (grouped via TSProm) |
+  
