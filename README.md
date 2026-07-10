@@ -48,7 +48,7 @@ One row = one transcript × one context (tissue or cancer type):
 > flags, add them as extra columns — the app will pick up any column for
 > display and filtering with a small edit.
 
-## Data Provenance & Citations
+## Data Citations
 
 If you use this dataset or the associated methodologies, please cite the following publications:
 
