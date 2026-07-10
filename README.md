@@ -1,4 +1,5 @@
-# TransTEx-related expression-group datasets (human · mouse · cancer)
+# TransTEx-related expression groupings 
+## (human · mouse · cancer)
 
 A browser tool for looking up **TransTEx** transcript
 expression-group classifications across three resources — **human tissues
