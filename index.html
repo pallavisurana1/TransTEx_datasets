@@ -221,12 +221,11 @@ async function run(){
   if(!conn) return;
   const where = whereClause();
   const agg = (await rowsOf(
-    `SELECT count(*) rows, count(DISTINCT gene_id) genes, count(DISTINCT context) ctx
+    `SELECT count(*) AS "rows", count(DISTINCT gene_id) AS "genes", count(DISTINCT context) AS "ctx"
      FROM atlas WHERE ${where}`))[0];
   $("s-rows").textContent  = Number(agg.rows).toLocaleString();
   $("s-genes").textContent = Number(agg.genes).toLocaleString();
   $("s-ctx").textContent   = Number(agg.ctx).toLocaleString();
-  $("download").disabled = Number(agg.rows)===0;
 
   const rows = await rowsOf(
     `SELECT gene_id,symbol,species,domain,context,specificity_class cls,value
