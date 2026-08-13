@@ -128,7 +128,8 @@
 
   <div class="controls">
     <div class="field"><label for="f-species">Species</label><select id="f-species"></select></div>
-    <div class="field"><label for="f-tissue">Tissues / cancers</label><details class="multi" id="f-tissue"><summary>All tissues / cancers</summary><div class="multi-options"></div></details></div>
+    <div class="field"><label for="f-tissue">Tissues</label><details class="multi" id="f-tissue"><summary>All tissues</summary><div class="multi-options"></div></details></div>
+    <div class="field"><label for="f-cancer">Cancer types</label><details class="multi" id="f-cancer"><summary>All cancer types</summary><div class="multi-options"></div></details></div>
     <div class="field"><label for="f-category">Categories</label><details class="multi" id="f-category"><summary>All categories</summary><div class="multi-options"></div></details></div>
     <div class="field"><label for="f-gene">Transcript / gene</label><input id="f-gene" type="text" placeholder="e.g. GFAP, ENSG…, ENST…" autocomplete="off"></div>
     <div class="field reset"><button id="reset" type="button">Reset filters</button></div>
@@ -234,18 +235,22 @@ async function fillStatic(){
 
 function whereClause({withTissue=true, withCategory=true}={}){
   const c=[]; const sp=$("f-species").value, ti=selectedValues("f-tissue"),
-    ca=selectedValues("f-category"), g=$("f-gene").value.trim();
+    cancers=selectedValues("f-cancer"), ca=selectedValues("f-category"),
+    g=$("f-gene").value.trim();
   if(sp) c.push(`species='${esc(sp)}'`);
-  if(withTissue && ti.length) c.push(`tissue IN (${sqlList(ti)})`);
+  const contexts = [...ti, ...cancers];
+  if(withTissue && contexts.length) c.push(`tissue IN (${sqlList(contexts)})`);
   if(withCategory && ca.length) c.push(`category IN (${sqlList(ca)})`);
   if(g) c.push(`(transcript ILIKE '%${esc(g)}%' OR gene_id ILIKE '%${esc(g)}%' OR gene_name ILIKE '%${esc(g)}%')`);
   return c.length?c.join(" AND "):"TRUE";
 }
 
 async function refreshDependents(){
-  // tissue & category options depend on the chosen species
+  // Context and category options depend on the chosen species.
+  // Cancer types occur in cancer-category records; normal tissues occur elsewhere.
   const base = whereClause({withTissue:false, withCategory:false});
-  setMultiOptions("f-tissue",   await distinct("tissue",   base), "All tissues / cancers");
+  setMultiOptions("f-tissue", await distinct("tissue", `${base} AND category NOT ILIKE 'Can%'`), "All tissues");
+  setMultiOptions("f-cancer", await distinct("tissue", `${base} AND category ILIKE 'Can%'`), "All cancer types");
   setMultiOptions("f-category", await distinct("category", base), "All categories");
 }
 
@@ -314,13 +319,14 @@ async function download(){
 
 function wire(){
   $("f-species").addEventListener("change", async()=>{ await refreshDependents(); run(); });
-  $("f-tissue").addEventListener("change", ()=>{ updateMultiSummary("f-tissue", "All tissues / cancers"); run(); });
+  $("f-tissue").addEventListener("change", ()=>{ updateMultiSummary("f-tissue", "All tissues"); run(); });
+  $("f-cancer").addEventListener("change", ()=>{ updateMultiSummary("f-cancer", "All cancer types"); run(); });
   $("f-category").addEventListener("change", ()=>{ updateMultiSummary("f-category", "All categories"); run(); });
   let t; $("f-gene").addEventListener("input", ()=>{ clearTimeout(t); t=setTimeout(run,220); });
   $("download").addEventListener("click", download);
   $("reset").addEventListener("click", async()=>{
     $("f-species").value="";
-    ["f-tissue","f-category"].forEach(id=>$(id).querySelectorAll("input").forEach(i=>i.checked=false));
+    ["f-tissue","f-cancer","f-category"].forEach(id=>$(id).querySelectorAll("input").forEach(i=>i.checked=false));
     $("f-gene").value=""; await refreshDependents(); run();
   });
   refreshDependents();

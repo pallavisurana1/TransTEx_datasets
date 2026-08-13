@@ -36,7 +36,8 @@ Everything is at **transcript / isoform level**, mapped to genes.
 
 ## Using the browser tool
 
-Choose any number of tissues and/or cancer types from **Tissues / cancers**;
+Choose any number of normal tissues from **Tissues** and cancer types from
+**Cancer types**;
 choose any number of expression groups from **Categories**; then optionally
 filter by species or transcript/gene. Leaving a multi-select empty means “all”.
 
