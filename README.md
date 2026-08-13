@@ -4,7 +4,9 @@
 A browser tool for looking up **TransTEx** transcript
 expression-group classifications across three resources — **human tissues
 (GTEx)**, a **mouse body map**, and **solid-tumor cancers (TCGA solid tumors)** —
-and downloading any filtered slice as CSV.
+and downloading any filtered slice as CSV. The browser app reads the combined
+`TransTEx_Cancer_dataset.parquet` file, which now contains both the normal-tissue
+and cancer records.
 
 Available: https://pallavisurana1.github.io/TransTEx_datasets/
 
@@ -25,29 +27,37 @@ is reliably expressed in.
 | `Null` | No / minimal expression across all tissues |
 
 **Solid-tumor cancers (TCGA datasets)** — the same logic applied
-across cancer types, giving `CanSp`, `CanEn`, `CanWide`, `CanLow`, `CanNull`,
+across cancer types, giving `CanSp`, `CanEn`, `CanWide`, `CanLow`, `CanNUll`,
 plus the two cross-resource biomarker groups: `CanHigh` (high in cancer, lost in
 normal — oncogenic-like ) and `NorHigh` (high in normal, lost in
 cancer — Tumor suppresor: TSG-like).
 
 Everything is at **transcript / isoform level**, mapped to genes.
 
+## Using the browser tool
+
+Choose any number of tissues and/or cancer types from **Tissues / cancers**;
+choose any number of expression groups from **Categories**; then optionally
+filter by species or transcript/gene. Leaving a multi-select empty means “all”.
+
+Results and CSV downloads are collapsed to one row per transcript and species.
+When the same transcript has more than one matching category or tissue/cancer,
+the distinct values are shown as comma-separated lists. This keeps, for example,
+`Low, CanLow` for the same ENST on one row, and combines the relevant tissues
+for a `TSp, CanSp` transcript.
+
 ## Schema
 
-One row = one transcript × one context (tissue or cancer type):
+The combined Parquet file uses this schema before the browser aggregates matching
+records for display and export:
 
-`transcript_id, gene_id, symbol, species, domain, context, class, value`
+`transcript, gene_id, gene_name, tissue, category, species`
 
-- `domain` — one of `human_tissue`, `mouse_tissue`, `cancer`
-- `context` — the tissue (e.g. `testis`, `liver`) or cancer type (e.g. `GBM`, `OV`)
-- `class` — the expression group (`TSp`/`TEn`/`Wide`/`Low`/`Null` for tissues;
-  `CanSp`/`CanEn`/`CanWide`/`CanLow`/`CanNull` for cancer)
-- `value` — mean expression (TPM/nTPM) for that transcript in that context
-
-> Adjust these columns to match your actual grouping tables. If you also carry
-> transcript biotype (`protein_coding`, `lncRNA`, …) or the `CanHigh`/`NorHigh`
-> flags, add them as extra columns — the app will pick up any column for
-> display and filtering with a small edit.
+- `tissue` — the tissue (e.g. `testis`, `liver`) or cancer type (e.g. `GBM`, `OV`);
+  it may be empty for a pan-cancer/non-context-specific category
+- `category` — the expression group (`TSp`/`TEn`/`Wide`/`Low`/`Null` for tissues;
+  `CanSp`/`CanEn`/`CanWide`/`CanLow`/`CanNUll` for cancer)
+- `species` — `human` or `mouse`
 
 ## Data Citations
 

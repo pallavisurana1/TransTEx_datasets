@@ -49,6 +49,24 @@
     appearance:none;
   }
   select:focus,input:focus{outline:2px solid var(--focus);outline-offset:1px;border-color:transparent}
+  .multi{position:relative;min-width:0}
+  .multi summary{
+    list-style:none; font:inherit; font-size:14px; color:var(--ink); background:#fff;
+    border:1px solid var(--hair); border-radius:8px; padding:9px 32px 9px 10px;
+    cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .multi summary::-webkit-details-marker{display:none}
+  .multi summary::after{content:"⌄";position:absolute;right:11px;color:var(--muted)}
+  .multi[open] summary{outline:2px solid var(--focus);outline-offset:1px;border-color:transparent}
+  .multi-options{
+    position:absolute;z-index:5;top:calc(100% + 4px);left:0;right:0;max-height:240px;
+    overflow:auto;background:#fff;border:1px solid var(--hair);border-radius:8px;
+    box-shadow:0 8px 20px rgba(25,28,39,.14);padding:5px;
+  }
+  .multi-options label{display:flex;align-items:center;gap:8px;padding:6px 7px;
+    font-family:var(--sans);font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink);cursor:pointer}
+  .multi-options label:hover{background:#f4f2f7;border-radius:5px}
+  .multi-options input{accent-color:var(--hematoxylin)}
   .reset{align-self:end}
   button{
     font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--hair);
@@ -110,8 +128,8 @@
 
   <div class="controls">
     <div class="field"><label for="f-species">Species</label><select id="f-species"></select></div>
-    <div class="field"><label for="f-tissue">Tissue / Cancer</label><select id="f-tissue"></select></div>
-    <div class="field"><label for="f-category">Category</label><select id="f-category"></select></div>
+    <div class="field"><label for="f-tissue">Tissues / cancers</label><details class="multi" id="f-tissue"><summary>All tissues / cancers</summary><div class="multi-options"></div></details></div>
+    <div class="field"><label for="f-category">Categories</label><details class="multi" id="f-category"><summary>All categories</summary><div class="multi-options"></div></details></div>
     <div class="field"><label for="f-gene">Transcript / gene</label><input id="f-gene" type="text" placeholder="e.g. GFAP, ENSG…, ENST…" autocomplete="off"></div>
     <div class="field reset"><button id="reset" type="button">Reset filters</button></div>
   </div>
@@ -140,7 +158,7 @@
 <script type="module">
 import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
-const PARQUET = "TransTEx_dataset.parquet";   // sits next to this file
+const PARQUET = "TransTEx_Cancer_dataset.parquet";   // includes normal-tissue and cancer groupings
 
 // case-insensitive category -> colour, with a safe fallback for anything unlisted
 const CLASS_COLORS = {
@@ -153,6 +171,7 @@ const colorFor = c => CLASS_COLORS[String(c).toLowerCase()] || "#8a8f99";
 const $ = id => document.getElementById(id);
 const status = m => { $("rows").innerHTML = `<tr><td colspan="6" class="msg">${m}</td></tr>`; };
 const esc = s => String(s).replace(/'/g,"''");
+const escHtml = s => String(s).replace(/[&<>\"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 let conn = null;
 
@@ -193,16 +212,32 @@ function setOptions(sel, values, allLabel){
   if([...sel.options].some(o=>o.value===cur)) sel.value = cur;
 }
 
+const selectedValues = id => [...$(id).querySelectorAll("input:checked")].map(i=>i.value);
+const sqlList = values => values.map(v=>`'${esc(v)}'`).join(",");
+
+function setMultiOptions(id, values, allLabel){
+  const el = $(id), previous = new Set(selectedValues(id));
+  el.querySelector(".multi-options").innerHTML = values.map(v=>
+    `<label><input type="checkbox" value="${escHtml(v)}" ${previous.has(v)?"checked":""}>${escHtml(v)}</label>`
+  ).join("");
+  updateMultiSummary(id, allLabel);
+}
+
+function updateMultiSummary(id, allLabel){
+  const selected = selectedValues(id), summary = $(id).querySelector("summary");
+  summary.textContent = selected.length ? `${selected.length} selected` : allLabel;
+}
+
 async function fillStatic(){
   setOptions($("f-species"), await distinct("species"), "All species");
 }
 
 function whereClause({withTissue=true, withCategory=true}={}){
-  const c=[]; const sp=$("f-species").value, ti=$("f-tissue").value,
-    ca=$("f-category").value, g=$("f-gene").value.trim();
+  const c=[]; const sp=$("f-species").value, ti=selectedValues("f-tissue"),
+    ca=selectedValues("f-category"), g=$("f-gene").value.trim();
   if(sp) c.push(`species='${esc(sp)}'`);
-  if(withTissue && ti) c.push(`tissue='${esc(ti)}'`);
-  if(withCategory && ca) c.push(`category='${esc(ca)}'`);
+  if(withTissue && ti.length) c.push(`tissue IN (${sqlList(ti)})`);
+  if(withCategory && ca.length) c.push(`category IN (${sqlList(ca)})`);
   if(g) c.push(`(transcript ILIKE '%${esc(g)}%' OR gene_id ILIKE '%${esc(g)}%' OR gene_name ILIKE '%${esc(g)}%')`);
   return c.length?c.join(" AND "):"TRUE";
 }
@@ -210,23 +245,33 @@ function whereClause({withTissue=true, withCategory=true}={}){
 async function refreshDependents(){
   // tissue & category options depend on the chosen species
   const base = whereClause({withTissue:false, withCategory:false});
-  setOptions($("f-tissue"),   await distinct("tissue",   base), "All tissues / cancers");
-  setOptions($("f-category"), await distinct("category", base), "All categories");
+  setMultiOptions("f-tissue",   await distinct("tissue",   base), "All tissues / cancers");
+  setMultiOptions("f-category", await distinct("category", base), "All categories");
 }
 
 function chip(cls){
   return `<span class="chip" style="background:${colorFor(cls)}">${cls}</span>`;
+}
+function chips(classes){ return String(classes ?? "").split(", ").filter(Boolean).map(chip).join(" "); }
+
+function groupedQuery(where){
+  return `SELECT transcript,gene_id,gene_name,species,
+                 string_agg(DISTINCT tissue, ', ' ORDER BY tissue) AS tissue,
+                 string_agg(DISTINCT category, ', ' ORDER BY category) AS category
+          FROM tx WHERE ${where}
+          GROUP BY transcript,gene_id,gene_name,species`;
 }
 
 async function run(){
   if(!conn) return;
   const where = whereClause();
   const agg = (await rowsOf(
-    `SELECT count(*) AS "n_rows",
+    `WITH grouped AS (${groupedQuery(where)})
+     SELECT count(*) AS "n_rows",
             count(DISTINCT transcript) AS "n_tx",
             count(DISTINCT gene_id)    AS "n_genes",
-            count(DISTINCT tissue)     AS "n_tis"
-     FROM tx WHERE ${where}`))[0];
+            (SELECT count(DISTINCT tissue) FROM tx WHERE ${where}) AS "n_tis"
+     FROM grouped`))[0];
   $("s-rows").textContent  = Number(agg.n_rows).toLocaleString();
   $("s-tx").textContent    = Number(agg.n_tx).toLocaleString();
   $("s-genes").textContent = Number(agg.n_genes).toLocaleString();
@@ -234,8 +279,7 @@ async function run(){
   $("download").disabled = Number(agg.n_rows)===0;
 
   const rows = await rowsOf(
-    `SELECT transcript,gene_id,gene_name,species,tissue,category
-     FROM tx WHERE ${where}
+    `${groupedQuery(where)}
      ORDER BY gene_name,tissue,transcript LIMIT 500`);
   if(!rows.length){ status("No rows match these filters. Loosen one to see results."); return; }
   $("rows").innerHTML = rows.map(r=>`<tr>
@@ -244,7 +288,7 @@ async function run(){
       <td class="sym">${r.gene_name ?? ""}</td>
       <td>${r.species ?? ""}</td>
       <td>${r.tissue ?? ""}</td>
-      <td>${chip(r.category)}</td>
+      <td>${chips(r.category)}</td>
     </tr>`).join("");
   $("foot").textContent =
     Number(agg.n_rows) > 500
@@ -254,8 +298,7 @@ async function run(){
 
 async function download(){
   const rows = await rowsOf(
-    `SELECT transcript,gene_id,gene_name,species,tissue,category
-     FROM tx WHERE ${whereClause()} ORDER BY gene_name,tissue,transcript`);
+    `${groupedQuery(whereClause())} ORDER BY gene_name,tissue,transcript`);
   if(!rows.length) return;
   const cols = Object.keys(rows[0]);
   const csv = [cols.join(",")].concat(
@@ -271,12 +314,13 @@ async function download(){
 
 function wire(){
   $("f-species").addEventListener("change", async()=>{ await refreshDependents(); run(); });
-  $("f-tissue").addEventListener("change", run);
-  $("f-category").addEventListener("change", run);
+  $("f-tissue").addEventListener("change", ()=>{ updateMultiSummary("f-tissue", "All tissues / cancers"); run(); });
+  $("f-category").addEventListener("change", ()=>{ updateMultiSummary("f-category", "All categories"); run(); });
   let t; $("f-gene").addEventListener("input", ()=>{ clearTimeout(t); t=setTimeout(run,220); });
   $("download").addEventListener("click", download);
   $("reset").addEventListener("click", async()=>{
-    ["f-species","f-tissue","f-category"].forEach(id=>$(id).value="");
+    $("f-species").value="";
+    ["f-tissue","f-category"].forEach(id=>$(id).querySelectorAll("input").forEach(i=>i.checked=false));
     $("f-gene").value=""; await refreshDependents(); run();
   });
   refreshDependents();
