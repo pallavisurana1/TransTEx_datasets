@@ -122,14 +122,13 @@
   <header>
     <p class="eyebrow">TransTEx · transcript-level expression groups</p>
     <h1>TransTEx Expression Groups</h1>
-    <p class="sub">Look up the TransTEx expression-group category for each transcript across tissues and cancers. </p>
+    <p class="sub">Look up the TransTEx expression-group category for each transcript across human and mouse tissues.</p>
     <div class="rule"></div>
   </header>
 
   <div class="controls">
     <div class="field"><label for="f-species">Species</label><select id="f-species"></select></div>
     <div class="field"><label for="f-tissue">Tissues</label><details class="multi" id="f-tissue"><summary>All tissues</summary><div class="multi-options"></div></details></div>
-    <div class="field"><label for="f-cancer">Cancer types</label><details class="multi" id="f-cancer"><summary>All cancer types</summary><div class="multi-options"></div></details></div>
     <div class="field"><label for="f-category">Categories</label><details class="multi" id="f-category"><summary>All categories</summary><div class="multi-options"></div></details></div>
     <div class="field"><label for="f-gene">Transcript / gene</label><input id="f-gene" type="text" placeholder="e.g. GFAP, ENSG…, ENST…" autocomplete="off"></div>
     <div class="field reset"><button id="reset" type="button">Reset filters</button></div>
@@ -148,7 +147,7 @@
     <table>
       <thead><tr>
         <th>Transcript</th><th>Gene ID</th><th>Gene name</th>
-        <th>Species</th><th>Tissue / Cancer</th><th>Category</th>
+        <th>Species</th><th>Tissue</th><th>Category</th>
       </tr></thead>
       <tbody id="rows"><tr><td colspan="6" class="msg" id="status">Loading DuckDB engine…</td></tr></tbody>
     </table>
@@ -159,13 +158,11 @@
 <script type="module">
 import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
 
-const PARQUET = "TransTEx_Cancer_dataset.parquet";   // includes normal-tissue and cancer groupings
+const PARQUET = "TransTEx_dataset.parquet";
 
 // case-insensitive category -> colour, with a safe fallback for anything unlisted
 const CLASS_COLORS = {
-  tsp:"#b32b6e", ten:"#6a53b8", wide:"#2f8f83", low:"#7c8698", null:"#b0b7bc",
-  cansp:"#a01b4a", canen:"#7a3fb0", canenh:"#7a3fb0", canwide:"#2f8f83",
-  canlow:"#6b7c8c", cannull:"#b0b7bc", canhigh:"#c65a2e", norhigh:"#3f6fb0"
+  tsp:"#b32b6e", ten:"#6a53b8", wide:"#2f8f83", low:"#7c8698", null:"#b0b7bc"
 };
 const colorFor = c => CLASS_COLORS[String(c).toLowerCase()] || "#8a8f99";
 
@@ -235,22 +232,19 @@ async function fillStatic(){
 
 function whereClause({withTissue=true, withCategory=true}={}){
   const c=[]; const sp=$("f-species").value, ti=selectedValues("f-tissue"),
-    cancers=selectedValues("f-cancer"), ca=selectedValues("f-category"),
+    ca=selectedValues("f-category"),
     g=$("f-gene").value.trim();
   if(sp) c.push(`species='${esc(sp)}'`);
-  const contexts = [...ti, ...cancers];
-  if(withTissue && contexts.length) c.push(`tissue IN (${sqlList(contexts)})`);
+  if(withTissue && ti.length) c.push(`tissue IN (${sqlList(ti)})`);
   if(withCategory && ca.length) c.push(`category IN (${sqlList(ca)})`);
   if(g) c.push(`(transcript ILIKE '%${esc(g)}%' OR gene_id ILIKE '%${esc(g)}%' OR gene_name ILIKE '%${esc(g)}%')`);
   return c.length?c.join(" AND "):"TRUE";
 }
 
 async function refreshDependents(){
-  // Context and category options depend on the chosen species.
-  // Cancer types occur in cancer-category records; normal tissues occur elsewhere.
+  // Tissue and category options depend on the chosen species.
   const base = whereClause({withTissue:false, withCategory:false});
-  setMultiOptions("f-tissue", await distinct("tissue", `${base} AND category NOT ILIKE 'Can%'`), "All tissues");
-  setMultiOptions("f-cancer", await distinct("tissue", `${base} AND category ILIKE 'Can%'`), "All cancer types");
+  setMultiOptions("f-tissue", await distinct("tissue", base), "All tissues");
   setMultiOptions("f-category", await distinct("category", base), "All categories");
 }
 
@@ -320,13 +314,12 @@ async function download(){
 function wire(){
   $("f-species").addEventListener("change", async()=>{ await refreshDependents(); run(); });
   $("f-tissue").addEventListener("change", ()=>{ updateMultiSummary("f-tissue", "All tissues"); run(); });
-  $("f-cancer").addEventListener("change", ()=>{ updateMultiSummary("f-cancer", "All cancer types"); run(); });
   $("f-category").addEventListener("change", ()=>{ updateMultiSummary("f-category", "All categories"); run(); });
   let t; $("f-gene").addEventListener("input", ()=>{ clearTimeout(t); t=setTimeout(run,220); });
   $("download").addEventListener("click", download);
   $("reset").addEventListener("click", async()=>{
     $("f-species").value="";
-    ["f-tissue","f-cancer","f-category"].forEach(id=>$(id).querySelectorAll("input").forEach(i=>i.checked=false));
+    ["f-tissue","f-category"].forEach(id=>$(id).querySelectorAll("input").forEach(i=>i.checked=false));
     $("f-gene").value=""; await refreshDependents(); run();
   });
   refreshDependents();
